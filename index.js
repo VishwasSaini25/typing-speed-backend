@@ -1,14 +1,13 @@
+require("dotenv").config();
 const express = require('express');
 const cors = require("cors");
 const mongoose = require('mongoose');
-const session = require('express-session');
-const cookieParser = require('cookie-parser');
 const bcrypt = require('bcrypt');
-
+const generateToken = require('./auth');
 const app = express();
 
 // Connect to MongoDB
-mongoose.connect('mongodb+srv://visherrsaini11:Vishwas2512@typingspeedtest.pb1hfey.mongodb.net/?retryWrites=true&w=majority', { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
 mongoose.connection.on("connected",() =>{
   console.log("mongoose is connected");
 })
@@ -16,34 +15,13 @@ mongoose.connection.on("connected",() =>{
 
 app.use(express.json());
 app.use(cors());
-app.use(session({
-  secret: 'nothingSpecial', 
-  resave: false, 
-  saveUninitialized: true,
-  //  cookie: {
-    //   secure: false,
-    //   maxAge: 1000*60*60*24
-    //  } 
-  }));
-  app.use(cookieParser());
-  
-  app.use((req, res, next) => {
-    console.log('req.session.userId:', req.session.userId);
-    console.log('req.cookies.loggedIn:', req.cookies.loggedIn);
-    res.locals.loggedIn = req.session?.userId || req.cookies?.loggedIn === 'true';
-    next();
-  });
+
+
 // Define your user model and schema
 const User = mongoose.model('User', {
   username: String,
   password: String,
 });
-
-// Check LoggedIn endpoint
-app.get('/api/check-login-status', (req, res) => {
-  res.json({ loggedIn: !!res.locals.loggedIn });
-});
-
 
 // Register endpoint
 app.post('/api/register', async (req, res) => {
@@ -70,9 +48,8 @@ app.post('/api/login', async (req, res) => {
   try {
     const user = await User.findOne({ username });
     if (user && (await bcrypt.compare(password, user.password))) {
-      req.session.userId = user._id;
-      res.cookie('loggedIn', 'true', { maxAge: 24 * 60 * 60 * 1000 });
-      return res.status(200).json({ user });
+      const token = generateToken(user);
+      return res.status(200).json({ user,token });
     } else {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -84,16 +61,15 @@ app.post('/api/login', async (req, res) => {
 
 // Logout endpoint
 app.post('/api/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ error: 'Logout failed' });
-    }
-    res.clearCookie('connect.sid');
-    res.status(200).json({ message: 'Logout successful' });
+  try{
+    return res.status(200).json({ message: 'Logout successful' });
+  } catch(error){
+    res.status(500).json({ error: 'Logout failed' });
+  }
   });
-});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
